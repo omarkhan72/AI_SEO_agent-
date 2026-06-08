@@ -61,12 +61,31 @@ app.post('/api/plan-content', async (req, res) => {
       ]
     });
 
-    // Step 3: Parse and return the JSON outline
+    // Step 3: Parse the JSON outline
     const outline = JSON.parse(outlineResponse.choices[0].message.content);
     console.log(`[AI Brain] Outline planned successfully: ${outline.title}`);
 
+    // Step 4: Write outline draft to Firestore content_pipeline collection
+    let docRef = null;
+    try {
+      console.log("[Firestore] Saving planned outline draft...");
+      docRef = await db.collection('content_pipeline').add({
+        title: outline.title,
+        slug: outline.slug,
+        headings: outline.headings,
+        target_keyword: keyword,
+        status: "draft",
+        author: "Omar Khan",
+        created_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log(`[Firestore] Outline draft saved with ID: ${docRef.id}`);
+    } catch (dbError) {
+      console.error("❌ Firestore Write Error during content planning:", dbError);
+    }
+
     res.status(200).json({
       success: true,
+      documentId: docRef ? docRef.id : null,
       data: outline
     });
 

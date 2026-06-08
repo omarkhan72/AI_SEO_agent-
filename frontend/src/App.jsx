@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import './App.css';
 
@@ -56,6 +57,7 @@ function App() {
   const [credits, setCredits] = useState(50);
   const [drafts, setDrafts] = useState(INITIAL_DRAFTS);
   const [selectedDraft, setSelectedDraft] = useState(null);
+  const [error, setError] = useState('');
   
   // Track simulation step index for active status message rotation
   const [stepIndex, setStepIndex] = useState(0);
@@ -91,58 +93,46 @@ function App() {
     return () => clearInterval(interval);
   }, [loading]);
 
-  const handleRunAgent = (e) => {
+  const handleRunAgent = async (e) => {
     e.preventDefault();
     if (!keyword.trim()) return;
 
     setLoading(true);
-    
-    // Simulate 3-second backend agent processing loop
-    setTimeout(() => {
-      // 1. Generate optimized title, slug, and markdown draft based on keyword
-      const cleanedKeyword = keyword.trim();
-      const articleTitle = `The Complete Guide to ${cleanedKeyword}: Best Practices & Strategies`;
-      const articleSlug = `${cleanedKeyword.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-complete-guide`;
-      
-      const newDraft = {
-        id: Date.now().toString(),
-        title: articleTitle,
-        target_keyword: cleanedKeyword,
-        slug: articleSlug,
-        created_at: new Date().toISOString(),
-        status: 'draft',
-        markdown_body: `## Introduction
-This article covers essential concepts, advanced strategies, and common pitfalls regarding **${cleanedKeyword}**. Following these steps ensures your workflows stay optimized.
+    setError('');
 
-## Understanding ${cleanedKeyword}
-To succeed with ${cleanedKeyword}, we must understand the core architecture:
-1. **Core Fundamentals**: Lay down a solid base configuration.
-2. **Performance Optimizations**: Optimize load cycles and render times.
-3. **Security Audits**: Enforce credential checks and security layers.
+    try {
+      // Live Axios POST request to http://localhost:5000/api/plan-content
+      const response = await axios.post('http://localhost:5000/api/plan-content', {
+        keyword: keyword.trim()
+      });
 
-## Implementation Guide
-Start by initializing your codebase:
-\`\`\`javascript
-// Initializer blueprint
-const config = {
-  keyword: "${cleanedKeyword}",
-  agentMode: "autonomous",
-  engine: "gpt-4o-mini",
-  timestamp: new Date()
-};
-console.log("SEO Agent successfully generated article for:", config.keyword);
-\`\`\`
+      // Confirm success structure response.data.success and response.data.data
+      if (response.data && response.data.success && response.data.data) {
+        const outline = response.data.data;
+        const cleanedKeyword = keyword.trim();
 
-## Conclusion
-Integrate these learnings today to see a direct lift in key metrics.`
-      };
+        const newDraft = {
+          id: Date.now().toString(),
+          title: outline.title,
+          target_keyword: cleanedKeyword,
+          slug: outline.slug,
+          created_at: new Date().toISOString(),
+          status: 'draft',
+          markdown_body: `## Outline Blueprint\n\nThis is the generated outline structure for **${cleanedKeyword}**:\n\n${outline.headings.map(h => `* ${h}`).join('\n')}\n\n*Draft is ready for composition!*`
+        };
 
-      // 2. Add new item to state, deduct 1 credit, clear loading
-      setDrafts(prev => [newDraft, ...prev]);
-      setCredits(prev => Math.max(0, prev - 1));
+        setDrafts(prev => [newDraft, ...prev]);
+        setCredits(prev => Math.max(0, prev - 1));
+        setKeyword('');
+      } else {
+        throw new Error("Invalid response format received from backend");
+      }
+    } catch (err) {
+      console.error("Error executing agent plan:", err);
+      setError("Could not connect to backend server on port 5000. Please verify the server is active.");
+    } finally {
       setLoading(false);
-      setKeyword('');
-    }, 3000);
+    }
   };
 
   const handlePublish = (id) => {
@@ -246,6 +236,20 @@ Integrate these learnings today to see a direct lift in key metrics.`
           </div>
         </div>
       </header>
+
+      {error && (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          marginBottom: '30px',
+          color: '#f87171',
+          fontSize: '15px'
+        }}>
+          ⚠️ {error}
+        </div>
+      )}
 
       {/* Grid Dashboard */}
       <div className="dashboard-grid">

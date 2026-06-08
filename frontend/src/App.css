@@ -62,12 +62,14 @@ body {
 .header-title h1 {
   font-size: 36px;
   font-weight: 700;
-  margin: 0 0 8px 0;
+  margin: 0 0 4px 0;
   background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 50%, #6366f1 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -0.5px;
+  line-height: 1.25;
+  padding-bottom: 4px;
 }
 
 .header-title p {
