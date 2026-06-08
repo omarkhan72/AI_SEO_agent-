@@ -1,19 +1,175 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
-import BlogReader from './components/BlogReader';
 import './App.css';
+
+// Highly realistic initial mock data
+const INITIAL_DRAFTS = [
+  {
+    id: '1',
+    title: 'Next.js 15 App Router: Mastering Server Components',
+    target_keyword: 'Next.js 15 App Router',
+    slug: 'nextjs-15-app-router-server-components',
+    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
+    status: 'published',
+    markdown_body: `## Introduction
+Next.js 15 introduces powerful optimizations for Server Components, enabling developers to build fast, secure, and content-rich applications out of the box. By moving rendering workloads to the build phase or server side, Server Components minimize client-side JavaScript execution.
+
+## Why Server Components?
+Server Components allow you to fetch data, access server-only resources (like databases or APIs), and keep sensitive credentials secure without exposing them to the browser.
+* **Zero Client-Side JavaScript**: Server Components render completely on the server, meaning their logic code is omitted from client bundles.
+* **Data Fetching Proximity**: Fetching data directly on the server reduces latency and simplifies state synchronization.
+* **SEO & Crawlability**: Fully rendered HTML is delivered to search engine indexers, drastically improving search presence.
+
+## Modern Styling & Layouts
+Integrating Tailwind or custom CSS within React Server Components is smooth and automatic. You get full server-side markup generation combined with interactive client islands wherever necessary.`
+  },
+  {
+    id: '2',
+    title: 'Mastering CSS Grid & Flexbox: A Pragmatic Layout Guide',
+    target_keyword: 'CSS Grid layout',
+    slug: 'css-grid-flexbox-layout-guide',
+    created_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), // 12 hours ago
+    status: 'draft',
+    markdown_body: `## Introduction
+CSS Grid and Flexbox are the twin pillars of modern web layout design. Understanding when to apply Grid (two-dimensional control) versus Flexbox (one-dimensional flow) resolves 90% of visual design frustrations.
+
+## CSS Grid vs Flexbox
+* **Grid**: Best suited for macro-layouts where elements must align along rows *and* columns concurrently (e.g. dashboards, card listings).
+* **Flexbox**: Best suited for micro-layouts, content alignment, and single-direction stacks (e.g. navigation menus, header bars, item tags).
+
+## Code Structure Example
+\`\`\`css
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px;
+}
+\`\`\`
+Use CSS Grid to build robust, screen-resizing dashboards with fluid structures.`
+  }
+];
 
 function App() {
   const [keyword, setKeyword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [agentStep, setAgentStep] = useState(0); // 0: Idle, 1: SERP, 2: Planner, 3: Writer, 4: Database
-  const [drafts, setDrafts] = useState([]);
+  const [statusText, setStatusText] = useState('');
+  const [credits, setCredits] = useState(50);
+  const [drafts, setDrafts] = useState(INITIAL_DRAFTS);
   const [selectedDraft, setSelectedDraft] = useState(null);
-  const [error, setError] = useState('');
-  const [activeSlug, setActiveSlug] = useState('');
+  
+  // Track simulation step index for active status message rotation
+  const [stepIndex, setStepIndex] = useState(0);
 
-  // Listen to hash changes for simple client routing
+  // Status text messages rotated every second during mock run
+  const statusSteps = [
+    'Scraping live web search SERP context...',
+    'Analyzing search keywords and planning article outline...',
+    'GPT-4o-mini is iteratively composing article sections...',
+    'Finalizing article copy and formatting raw markdown...',
+    'Draft saved to Firestore database collection...'
+  ];
+
+  // Rotate status message every 1 second when loading is active
+  useEffect(() => {
+    let interval;
+    if (loading) {
+      setStepIndex(0);
+      setStatusText(statusSteps[0]);
+      
+      interval = setInterval(() => {
+        setStepIndex((prev) => {
+          const next = prev + 1;
+          if (next < statusSteps.length) {
+            setStatusText(statusSteps[next]);
+            return next;
+          }
+          return prev;
+        });
+      }, 1000);
+    }
+    
+    return () => clearInterval(interval);
+  }, [loading]);
+
+  const handleRunAgent = (e) => {
+    e.preventDefault();
+    if (!keyword.trim()) return;
+
+    setLoading(true);
+    
+    // Simulate 3-second backend agent processing loop
+    setTimeout(() => {
+      // 1. Generate optimized title, slug, and markdown draft based on keyword
+      const cleanedKeyword = keyword.trim();
+      const articleTitle = `The Complete Guide to ${cleanedKeyword}: Best Practices & Strategies`;
+      const articleSlug = `${cleanedKeyword.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-complete-guide`;
+      
+      const newDraft = {
+        id: Date.now().toString(),
+        title: articleTitle,
+        target_keyword: cleanedKeyword,
+        slug: articleSlug,
+        created_at: new Date().toISOString(),
+        status: 'draft',
+        markdown_body: `## Introduction
+This article covers essential concepts, advanced strategies, and common pitfalls regarding **${cleanedKeyword}**. Following these steps ensures your workflows stay optimized.
+
+## Understanding ${cleanedKeyword}
+To succeed with ${cleanedKeyword}, we must understand the core architecture:
+1. **Core Fundamentals**: Lay down a solid base configuration.
+2. **Performance Optimizations**: Optimize load cycles and render times.
+3. **Security Audits**: Enforce credential checks and security layers.
+
+## Implementation Guide
+Start by initializing your codebase:
+\`\`\`javascript
+// Initializer blueprint
+const config = {
+  keyword: "${cleanedKeyword}",
+  agentMode: "autonomous",
+  engine: "gpt-4o-mini",
+  timestamp: new Date()
+};
+console.log("SEO Agent successfully generated article for:", config.keyword);
+\`\`\`
+
+## Conclusion
+Integrate these learnings today to see a direct lift in key metrics.`
+      };
+
+      // 2. Add new item to state, deduct 1 credit, clear loading
+      setDrafts(prev => [newDraft, ...prev]);
+      setCredits(prev => Math.max(0, prev - 1));
+      setLoading(false);
+      setKeyword('');
+    }, 3000);
+  };
+
+  const handlePublish = (id) => {
+    setDrafts(prev =>
+      prev.map(draft =>
+        draft.id === id ? { ...draft, status: 'published' } : draft
+      )
+    );
+    // If the published article is currently open in the preview modal, sync its status
+    if (selectedDraft && selectedDraft.id === id) {
+      setSelectedDraft(prev => ({ ...prev, status: 'published' }));
+    }
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      min: '2-digit'
+    });
+  };
+
+  // Switch routing based on hash routing (for the BlogReader demo path)
+  // We can mock the reader view inside App.jsx or let it fall back
+  const [activeSlug, setActiveSlug] = useState('');
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash;
@@ -23,98 +179,52 @@ function App() {
         setActiveSlug('');
       }
     };
-
-    handleHashChange(); // Run once on load
+    handleHashChange();
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Fetch all drafts on initial load
-  useEffect(() => {
-    fetchDrafts();
-  }, []);
-
-  const fetchDrafts = async () => {
-    try {
-      const response = await axios.get('http://localhost:5000/api/drafts');
-      setDrafts(response.data);
-    } catch (err) {
-      console.error("Failed to load drafts:", err);
-      setError("Unable to connect to the backend server. Please verify the backend is running.");
-    }
-  };
-
-  const handleRunAgent = async (e) => {
-    e.preventDefault();
-    if (!keyword.trim()) return;
-
-    setLoading(true);
-    setError('');
-    
-    // Simulate agent steps with visual delays
-    setAgentStep(1); // SERP Context
-    
-    try {
-      // Step 1: SERP Context check (simulated duration for rich UI experience)
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setAgentStep(2); // Structured Blueprint
-      
-      // Step 2: Structured Blueprint planning
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setAgentStep(3); // Drafting content
-      
-      // Step 3: Call composition API which runs SERP + Plan + Write loop + Firebase save
-      const response = await axios.post('http://localhost:5000/api/agent/compose', {
-        keyword: keyword
-      });
-      
-      setAgentStep(4); // Firebase Save completed
-      await new Promise(resolve => setTimeout(resolve, 800));
-
-      setKeyword('');
-      fetchDrafts(); // Reload list
-    } catch (err) {
-      console.error("Error executing agent:", err);
-      setError("AI generation failed or server timed out. Please try again.");
-    } finally {
-      setLoading(false);
-      setAgentStep(0);
-    }
-  };
-
-  const handlePublish = async (id) => {
-    try {
-      await axios.post(`http://localhost:5000/api/drafts/${id}/publish`);
-      // Update local state by filtering out the published item
-      setDrafts(prev => prev.filter(draft => draft.id !== id));
-      if (selectedDraft && selectedDraft.id === id) {
-        setSelectedDraft(null);
-      }
-    } catch (err) {
-      console.error("Failed to publish draft:", err);
-      alert("Error occurred while publishing the draft.");
-    }
-  };
-
-  const formatDate = (timestamp) => {
-    if (!timestamp) return 'Just now';
-    // If Firestore server timestamp format {_seconds: X, _nanoseconds: Y}
-    if (timestamp._seconds) {
-      return new Date(timestamp._seconds * 1000).toLocaleString();
-    }
-    // Standard Date string
-    return new Date(timestamp).toLocaleString();
-  };
-
+  // Simple clean reader component inside App flow
   if (activeSlug) {
+    const matchedArticle = drafts.find(d => d.slug === activeSlug);
+    
     return (
-      <BlogReader
-        activeSlug={activeSlug}
-        onBack={() => {
-          window.location.hash = '';
-          setActiveSlug('');
-        }}
-      />
+      <div className="reader-wrapper" style={{ maxWidth: '760px', margin: '0 auto', padding: '40px 24px' }}>
+        <button 
+          className="btn-secondary" 
+          onClick={() => {
+            window.location.hash = '';
+            setActiveSlug('');
+          }}
+          style={{ marginBottom: '30px' }}
+        >
+          ← Back to Studio
+        </button>
+        {matchedArticle && matchedArticle.status === 'published' ? (
+          <article>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '16px' }}>
+              <span className="draft-keyword">{matchedArticle.target_keyword}</span>
+              <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>• Published {formatDate(matchedArticle.created_at)}</span>
+            </div>
+            <h1 style={{ fontSize: '42px', fontWeight: '700', color: 'white', marginBottom: '30px', lineHeight: '1.25' }}>{matchedArticle.title}</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '40px' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>OK</div>
+              <div>
+                <div style={{ fontWeight: '600', fontSize: '15px' }}>Omar Khan</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>SEO Lead Architect</div>
+              </div>
+            </div>
+            <div className="markdown-preview" style={{ color: '#d1d5db', fontSize: '18px', lineHeight: '1.75' }}>
+              <ReactMarkdown>{matchedArticle.markdown_body}</ReactMarkdown>
+            </div>
+          </article>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '80px 20px' }}>
+            <h1 style={{ fontSize: '32px', marginBottom: '16px' }}>🔍 Content Not Found</h1>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '30px' }}>This article is either not published yet, or doesn't exist.</p>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -123,28 +233,19 @@ function App() {
       {/* Header */}
       <header className="dashboard-header">
         <div className="header-title">
-          <h1>SEO Agent Command Center</h1>
-          <p>Autonomously scrape search ranks, blueprint layout, write sections, and stage content.</p>
+          <h1>SEO Agent Studio</h1>
+          <p>Scrape context, blueprint outlines, and write search-optimized technical drafts automatically.</p>
         </div>
-        <div className="status-badge">
-          <span className="status-dot"></span>
-          SEO Engine Live
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <div className="status-badge" style={{ background: 'rgba(139, 92, 246, 0.15)', borderColor: 'rgba(139, 92, 246, 0.4)', color: '#c084fc' }}>
+            ⚡ Credits Remaining: {credits}
+          </div>
+          <div className="status-badge">
+            <span className="status-dot"></span>
+            Simulation Sandbox
+          </div>
         </div>
       </header>
-
-      {error && (
-        <div style={{
-          background: 'rgba(239, 68, 68, 0.1)',
-          border: '1px solid rgba(239, 68, 68, 0.3)',
-          borderRadius: '12px',
-          padding: '16px 20px',
-          marginBottom: '30px',
-          color: '#f87171',
-          fontSize: '15px'
-        }}>
-          ⚠️ {error}
-        </div>
-      )}
 
       {/* Grid Dashboard */}
       <div className="dashboard-grid">
@@ -152,17 +253,17 @@ function App() {
         <section className="panel-card">
           <h2>
             <span style={{ fontSize: '24px' }}>⚡</span>
-            Control Console
+            Agent Configuration
           </h2>
           <form onSubmit={handleRunAgent}>
             <div className="form-group">
-              <label htmlFor="keyword-input">Target SEO Search Keyword</label>
+              <label htmlFor="keyword-input">Target SEO Keyword</label>
               <div className="input-wrapper">
                 <input
                   id="keyword-input"
                   type="text"
                   className="text-input"
-                  placeholder="e.g. Docker Container Security Best Practices"
+                  placeholder="Enter target keyword (e.g., React Native optimization)..."
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
                   disabled={loading}
@@ -170,47 +271,43 @@ function App() {
               </div>
             </div>
             
-            <button 
-              type="submit" 
-              className="btn-primary" 
-              disabled={loading || !keyword.trim()}
-            >
-              {loading ? (
-                <>
-                  <span className="spinner"></span>
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <span>🚀</span> Run Autonomous SEO Agent
-                </>
-              )}
-            </button>
+            {!loading && (
+              <button 
+                type="submit" 
+                className="btn-primary" 
+                disabled={!keyword.trim()}
+              >
+                <span>🚀</span> Run SEO Agent
+              </button>
+            )}
           </form>
 
           {/* Dynamic Progress Indicator */}
           {loading && (
-            <div className="progress-container">
-              <div className="progress-header">
+            <div className="progress-container" style={{ marginTop: '0' }}>
+              <div className="progress-header" style={{ marginBottom: '16px' }}>
                 <span className="spinner"></span>
-                <span className="progress-title">Agent Execution In Progress...</span>
+                <span className="progress-title" style={{ color: 'var(--input-focus)' }}>Agent Running...</span>
+              </div>
+              <div style={{ color: '#d1d5db', fontSize: '14px', fontStyle: 'italic', marginBottom: '14px' }}>
+                "{statusText}"
               </div>
               <div className="progress-steps">
-                <div className={`progress-step ${agentStep >= 1 ? (agentStep > 1 ? 'completed' : 'active') : ''}`}>
-                  <span className="step-icon">{agentStep > 1 ? '✓' : '1'}</span>
-                  <span>Scraping live SERP context for keyword</span>
+                <div className={`progress-step ${stepIndex >= 0 ? (stepIndex > 0 ? 'completed' : 'active') : ''}`}>
+                  <span className="step-icon">{stepIndex > 0 ? '✓' : '1'}</span>
+                  <span>SERP scraping</span>
                 </div>
-                <div className={`progress-step ${agentStep >= 2 ? (agentStep > 2 ? 'completed' : 'active') : ''}`}>
-                  <span className="step-icon">{agentStep > 2 ? '✓' : '2'}</span>
-                  <span>Planning content structure and headings (gpt-4o-mini)</span>
+                <div className={`progress-step ${stepIndex >= 1 ? (stepIndex > 1 ? 'completed' : 'active') : ''}`}>
+                  <span className="step-icon">{stepIndex > 1 ? '✓' : '2'}</span>
+                  <span>Outline blueprint mapping</span>
                 </div>
-                <div className={`progress-step ${agentStep >= 3 ? (agentStep > 3 ? 'completed' : 'active') : ''}`}>
-                  <span className="step-icon">{agentStep > 3 ? '✓' : '3'}</span>
-                  <span>Iteratively drafting article markdown sections</span>
+                <div className={`progress-step ${stepIndex >= 2 ? (stepIndex > 2 ? 'completed' : 'active') : ''}`}>
+                  <span className="step-icon">{stepIndex > 2 ? '✓' : '3'}</span>
+                  <span>Iterative markdown section composing</span>
                 </div>
-                <div className={`progress-step ${agentStep >= 4 ? (agentStep > 4 ? 'completed' : 'active') : ''}`}>
-                  <span className="step-icon">{agentStep > 4 ? '✓' : '4'}</span>
-                  <span>Archiving optimized copy to Firestore memory</span>
+                <div className={`progress-step ${stepIndex >= 4 ? 'completed' : 'active'}`}>
+                  <span className="step-icon">{stepIndex >= 4 ? '✓' : '4'}</span>
+                  <span>Database indexing</span>
                 </div>
               </div>
             </div>
@@ -228,13 +325,18 @@ function App() {
             {drafts.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-icon">📭</div>
-                <p>No content in queue. Enter a keyword on the left to fire up your content writing pipeline!</p>
+                <p>No content in queue. Enter a keyword on the left to generate drafts.</p>
               </div>
             ) : (
               drafts.map((draft) => (
                 <div key={draft.id} className="draft-item">
                   <div className="draft-meta">
-                    <h3>{draft.title}</h3>
+                    <h3 
+                      onClick={() => setSelectedDraft(draft)} 
+                      style={{ cursor: 'pointer', hover: { textDecoration: 'underline' } }}
+                    >
+                      {draft.title}
+                    </h3>
                     <div className="draft-meta-details">
                       <span className="draft-keyword">{draft.target_keyword}</span>
                       <span className="draft-date">{formatDate(draft.created_at)}</span>
@@ -248,12 +350,22 @@ function App() {
                     >
                       Preview
                     </button>
-                    <button 
-                      className="btn-success"
-                      onClick={() => handlePublish(draft.id)}
-                    >
-                      Publish
-                    </button>
+                    {draft.status === 'draft' ? (
+                      <button 
+                        className="btn-success"
+                        onClick={() => handlePublish(draft.id)}
+                      >
+                        Publish Live
+                      </button>
+                    ) : (
+                      <button 
+                        className="btn-secondary" 
+                        disabled 
+                        style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', color: '#34d399', cursor: 'default', opacity: '1' }}
+                      >
+                        Published ✓
+                      </button>
+                    )}
                   </div>
                 </div>
               ))
@@ -283,6 +395,18 @@ function App() {
                 <strong>Original Keyword:</strong> <span style={{ color: '#c084fc' }}>{selectedDraft.target_keyword}</span>
                 <br />
                 <strong>URL Slug:</strong> <span style={{ color: '#a78bfa' }}>/blog/{selectedDraft.slug}</span>
+                <br />
+                <strong>Status:</strong> <span style={{ color: selectedDraft.status === 'published' ? '#34d399' : '#f59e0b' }}>
+                  {selectedDraft.status === 'published' ? 'Published Live' : 'Draft Staged'}
+                </span>
+                {selectedDraft.status === 'published' && (
+                  <>
+                    <br />
+                    <strong>Public URL:</strong> <a href={`#/blog/${selectedDraft.slug}`} target="_blank" rel="noopener noreferrer" style={{ color: '#8b5cf6', textDecoration: 'underline' }}>
+                      {window.location.origin}/#/blog/{selectedDraft.slug}
+                    </a>
+                  </>
+                )}
               </div>
               
               <div className="markdown-preview">
@@ -292,7 +416,23 @@ function App() {
             
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setSelectedDraft(null)}>Close</button>
-              <button className="btn-success" onClick={() => handlePublish(selectedDraft.id)}>Publish Live</button>
+              {selectedDraft.status === 'draft' ? (
+                <button 
+                  className="btn-success" 
+                  onClick={() => handlePublish(selectedDraft.id)}
+                >
+                  Publish Live
+                </button>
+              ) : (
+                <a 
+                  href={`#/blog/${selectedDraft.slug}`} 
+                  onClick={() => setSelectedDraft(null)}
+                  className="btn-primary" 
+                  style={{ textDecoration: 'none', display: 'inline-flex', padding: '10px 18px', fontSize: '13px' }}
+                >
+                  View Live Article
+                </a>
+              )}
             </div>
           </div>
         </div>

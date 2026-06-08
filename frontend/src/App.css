@@ -50,6 +50,13 @@ body {
   align-items: center;
   border-bottom: 1px solid var(--card-border);
   padding-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.header-title {
+  flex: 1 1 300px;
+  min-width: 0;
 }
 
 .header-title h1 {
