@@ -1,0 +1,16 @@
+{
+  "brand_voice": "Professional, strategic, and highly technical. Avoid jargon or hype words.",
+  "target_audience": "Software Engineers, Technical Founders, and DevOps Professionals",
+  "negative_keywords": [
+    "cheap",
+    "free",
+    "easy",
+    "magic",
+    "overnight",
+    "revolutionize",
+    "delve"
+  ],
+  "seed_topic": "Software Engineering and AI Automation",
+  "site_da": 35,
+  "domain": "example.com"
+}

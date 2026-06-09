@@ -1,4 +1,5 @@
 import express from 'express';
+import fs from 'fs';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import admin from 'firebase-admin';
@@ -31,6 +32,26 @@ admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
 const db = admin.firestore();
+
+// Auto-seed administrative site profile if missing
+(async () => {
+  try {
+    const configPath = './admin_config.json';
+    if (fs.existsSync(configPath)) {
+      const docRef = db.collection('site_profiles').doc('admin');
+      const doc = await docRef.get();
+      if (!doc.exists) {
+        console.log('[System] Seeding baseline E-E-A-T site profile from admin_config.json...');
+        const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        await docRef.set(configData);
+        console.log('[System] Seeded baseline E-E-A-T site profile in Firestore successfully.');
+      }
+    }
+  } catch (seedError) {
+    console.warn('⚠️ [System] Site profile auto-seeding failed:', seedError.message);
+  }
+})();
+
 
 // 2. Initialize OpenAI Engine Connection
 const openaiApiKey = process.env.OPENAI_API_KEY;
