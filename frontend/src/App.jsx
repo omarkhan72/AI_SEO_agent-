@@ -1,149 +1,129 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
-import './App.css';
+import { Toaster } from 'react-hot-toast';
+import { 
+  FileText, 
+  Sparkles, 
+  Eye, 
+  Send, 
+  Loader2,
+  CheckCircle,
+  AlertCircle
+} from 'lucide-react';
 
-// Highly realistic initial mock data
+import DashboardLayout from './components/layout/DashboardLayout.jsx';
+import Overview from './pages/Overview.jsx';
+import { useAgentAPI } from './hooks/useAgentAPI.js';
+
 const INITIAL_DRAFTS = [
   {
     id: '1',
     title: 'Next.js 15 App Router: Mastering Server Components',
     target_keyword: 'Next.js 15 App Router',
     slug: 'nextjs-15-app-router-server-components',
-    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
+    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
     status: 'published',
     markdown_body: `## Introduction
-Next.js 15 introduces powerful optimizations for Server Components, enabling developers to build fast, secure, and content-rich applications out of the box. By moving rendering workloads to the build phase or server side, Server Components minimize client-side JavaScript execution.
+Next.js 15 introduces powerful optimizations for Server Components, enabling developers to build fast, secure, and content-rich applications out of the box.
 
 ## Why Server Components?
-Server Components allow you to fetch data, access server-only resources (like databases or APIs), and keep sensitive credentials secure without exposing them to the browser.
-* **Zero Client-Side JavaScript**: Server Components render completely on the server, meaning their logic code is omitted from client bundles.
-* **Data Fetching Proximity**: Fetching data directly on the server reduces latency and simplifies state synchronization.
-* **SEO & Crawlability**: Fully rendered HTML is delivered to search engine indexers, drastically improving search presence.
-
-## Modern Styling & Layouts
-Integrating Tailwind or custom CSS within React Server Components is smooth and automatic. You get full server-side markup generation combined with interactive client islands wherever necessary.`
+Server Components allow you to fetch data, access server-only resources, and keep sensitive credentials secure without exposing them to the browser.`
   },
   {
     id: '2',
     title: 'Mastering CSS Grid & Flexbox: A Pragmatic Layout Guide',
     target_keyword: 'CSS Grid layout',
     slug: 'css-grid-flexbox-layout-guide',
-    created_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), // 12 hours ago
+    created_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
     status: 'draft',
     markdown_body: `## Introduction
-CSS Grid and Flexbox are the twin pillars of modern web layout design. Understanding when to apply Grid (two-dimensional control) versus Flexbox (one-dimensional flow) resolves 90% of visual design frustrations.
-
-## CSS Grid vs Flexbox
-* **Grid**: Best suited for macro-layouts where elements must align along rows *and* columns concurrently (e.g. dashboards, card listings).
-* **Flexbox**: Best suited for micro-layouts, content alignment, and single-direction stacks (e.g. navigation menus, header bars, item tags).
-
-## Code Structure Example
-\`\`\`css
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 24px;
-}
-\`\`\`
-Use CSS Grid to build robust, screen-resizing dashboards with fluid structures.`
+CSS Grid and Flexbox are the twin pillars of modern web layout design.`
   }
 ];
 
 function App() {
-  const [keyword, setKeyword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [statusText, setStatusText] = useState('');
-  const [credits, setCredits] = useState(50);
+  const [activeTab, setActiveTab] = useState('Overview');
+  const [activeDomain, setActiveDomain] = useState('example.com');
   const [drafts, setDrafts] = useState(INITIAL_DRAFTS);
   const [selectedDraft, setSelectedDraft] = useState(null);
-  const [error, setError] = useState('');
   
-  // Track simulation step index for active status message rotation
-  const [stepIndex, setStepIndex] = useState(0);
+  // Content Pipeline Input State
+  const [planKeyword, setPlanKeyword] = useState('');
+  
+  // AI Chat Consultant State
+  const [chatSessionId, setChatSessionId] = useState(null);
+  const [chatInput, setChatInput] = useState('');
+  const [chatHistory, setChatHistory] = useState([
+    { role: 'assistant', content: 'Hello! I am your AI SEO Consultant. Ask me anything about your current SEO technical audit scores, target audience profiles, or keywords. How can I assist you today?' }
+  ]);
 
-  // Status text messages rotated every second during mock run
-  const statusSteps = [
-    'Scraping live web search SERP context...',
-    'Analyzing search keywords and planning article outline...',
-    'GPT-4o-mini is iteratively composing article sections...',
-    'Finalizing article copy and formatting raw markdown...',
-    'Draft saved to Firestore database collection...'
-  ];
+  const { loadingStates, planContent, sendChatMessage } = useAgentAPI();
+  const chatBottomRef = useRef(null);
 
-  // Rotate status message every 1 second when loading is active
+  // Auto Scroll Chat to bottom on history change
   useEffect(() => {
-    let interval;
-    if (loading) {
-      setStepIndex(0);
-      setStatusText(statusSteps[0]);
-      
-      interval = setInterval(() => {
-        setStepIndex((prev) => {
-          const next = prev + 1;
-          if (next < statusSteps.length) {
-            setStatusText(statusSteps[next]);
-            return next;
-          }
-          return prev;
-        });
-      }, 1000);
-    }
-    
-    return () => clearInterval(interval);
-  }, [loading]);
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory, activeTab]);
 
-  const handleRunAgent = async (e) => {
+  const handlePlanSubmit = async (e) => {
     e.preventDefault();
-    if (!keyword.trim()) return;
-
-    setLoading(true);
-    setError('');
+    if (!planKeyword.trim()) return;
 
     try {
-      // Live Axios POST request to http://localhost:5000/api/plan-content
-      const response = await axios.post('http://localhost:5000/api/plan-content', {
-        keyword: keyword.trim()
-      });
-
-      // Confirm success structure response.data.success and response.data.data
-      if (response.data && response.data.success && response.data.data) {
-        const outline = response.data.data;
-        const cleanedKeyword = keyword.trim();
-
+      const result = await planContent(planKeyword.trim());
+      if (result && result.success && result.data) {
+        const outline = result.data;
         const newDraft = {
-          id: Date.now().toString(),
+          id: result.documentId || Date.now().toString(),
           title: outline.title,
-          target_keyword: cleanedKeyword,
+          target_keyword: planKeyword.trim(),
           slug: outline.slug,
           created_at: new Date().toISOString(),
           status: 'draft',
-          markdown_body: `## Outline Blueprint\n\nThis is the generated outline structure for **${cleanedKeyword}**:\n\n${outline.headings.map(h => `* ${h}`).join('\n')}\n\n*Draft is ready for composition!*`
+          markdown_body: `## Outline Blueprint\n\nGenerated structure for **${planKeyword.trim()}**:\n\n${outline.headings.map(h => `* ${h}`).join('\n')}\n\n*Ready to write!*`
         };
-
         setDrafts(prev => [newDraft, ...prev]);
-        setCredits(prev => Math.max(0, prev - 1));
-        setKeyword('');
-      } else {
-        throw new Error("Invalid response format received from backend");
+        setPlanKeyword('');
       }
     } catch (err) {
-      console.error("Error executing agent plan:", err);
-      setError("Could not connect to backend server on port 5000. Please verify the server is active.");
-    } finally {
-      setLoading(false);
+      console.error(err);
     }
   };
 
-  const handlePublish = (id) => {
-    setDrafts(prev =>
-      prev.map(draft =>
-        draft.id === id ? { ...draft, status: 'published' } : draft
-      )
-    );
-    // If the published article is currently open in the preview modal, sync its status
-    if (selectedDraft && selectedDraft.id === id) {
-      setSelectedDraft(prev => ({ ...prev, status: 'published' }));
+  const handlePublish = async (id) => {
+    try {
+      // Direct mock update to published status
+      setDrafts(prev =>
+        prev.map(d => d.id === id ? { ...d, status: 'published' } : d)
+      );
+      if (selectedDraft && selectedDraft.id === id) {
+        setSelectedDraft(prev => ({ ...prev, status: 'published' }));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleChatSend = async (e) => {
+    e.preventDefault();
+    if (!chatInput.trim() || loadingStates.chat) return;
+
+    const userMsg = chatInput.trim();
+    setChatInput('');
+    setChatHistory(prev => [...prev, { role: 'user', content: userMsg }]);
+
+    try {
+      const result = await sendChatMessage(activeDomain, chatSessionId, userMsg);
+      if (result && result.success) {
+        setChatSessionId(result.sessionId);
+        setChatHistory(result.history || []);
+      }
+    } catch (err) {
+      setChatHistory(prev => [
+        ...prev, 
+        { role: 'assistant', content: '⚠️ Service error: Unable to reach the consulting engine. Please check your backend is active.' }
+      ]);
     }
   };
 
@@ -153,295 +133,282 @@ function App() {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      min: '2-digit'
+      minute: '2-digit'
     });
   };
 
-  // Switch routing based on hash routing (for the BlogReader demo path)
-  // We can mock the reader view inside App.jsx or let it fall back
-  const [activeSlug, setActiveSlug] = useState('');
-  useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash;
-      if (hash.startsWith('#/blog/')) {
-        setActiveSlug(hash.replace('#/blog/', ''));
-      } else {
-        setActiveSlug('');
-      }
-    };
-    handleHashChange();
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  return (
+    <DashboardLayout 
+      activeTab={activeTab} 
+      setActiveTab={setActiveTab} 
+      activeDomain={activeDomain} 
+      setActiveDomain={setActiveDomain}
+    >
+      <Toaster position="bottom-right" reverseOrder={false} />
 
-  // Simple clean reader component inside App flow
-  if (activeSlug) {
-    const matchedArticle = drafts.find(d => d.slug === activeSlug);
-    
-    return (
-      <div className="reader-wrapper" style={{ maxWidth: '760px', margin: '0 auto', padding: '40px 24px' }}>
-        <button 
-          className="btn-secondary" 
-          onClick={() => {
-            window.location.hash = '';
-            setActiveSlug('');
-          }}
-          style={{ marginBottom: '30px' }}
-        >
-          ← Back to Studio
-        </button>
-        {matchedArticle && matchedArticle.status === 'published' ? (
-          <article>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '16px' }}>
-              <span className="draft-keyword">{matchedArticle.target_keyword}</span>
-              <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>• Published {formatDate(matchedArticle.created_at)}</span>
+      {/* Overview Tab */}
+      {activeTab === 'Overview' && (
+        <Overview activeDomain={activeDomain} />
+      )}
+
+      {/* Content Pipeline Tab */}
+      {activeTab === 'Content Pipeline' && (
+        <div className="space-y-8 max-w-7xl mx-auto">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white">Content Pipeline</h1>
+            <p className="text-sm text-slate-500 mt-1">Staging drafts queue, outlines planner, and publishing center.</p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Left Column: Plan Content Outline Form */}
+            <div className="bg-lightPanel dark:bg-darkPanel border border-slate-200 dark:border-slate-800/80 p-6 rounded-2xl shadow-sm h-fit">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-indigo-500" />
+                Outline Planner
+              </h3>
+              <form onSubmit={handlePlanSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Target SEO Keyword</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Node.js memory leaks..."
+                    value={planKeyword}
+                    onChange={(e) => setPlanKeyword(e.target.value)}
+                    disabled={loadingStates.planContent}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={!planKeyword.trim() || loadingStates.planContent}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 px-4 rounded-xl shadow-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                >
+                  {loadingStates.planContent ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Generating Outline...
+                    </>
+                  ) : (
+                    'Run SEO Content Planner'
+                  )}
+                </button>
+              </form>
             </div>
-            <h1 style={{ fontSize: '42px', fontWeight: '700', color: 'white', marginBottom: '30px', lineHeight: '1.25' }}>{matchedArticle.title}</h1>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '40px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>OK</div>
-              <div>
-                <div style={{ fontWeight: '600', fontSize: '15px' }}>Omar Khan</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>SEO Lead Architect</div>
+
+            {/* Right Column: Queue Staging Board */}
+            <div className="lg:col-span-2 bg-lightPanel dark:bg-darkPanel border border-slate-200 dark:border-slate-800/80 p-6 rounded-2xl shadow-sm">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-indigo-500" />
+                Queue Staging Board ({drafts.length})
+              </h3>
+
+              <div className="space-y-4">
+                {drafts.length === 0 ? (
+                  <div className="text-center py-12 text-slate-400">No content in queue. Plan a keyword to begin.</div>
+                ) : (
+                  drafts.map((draft) => (
+                    <div key={draft.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-slate-150 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/10 gap-4 hover:border-slate-350 dark:hover:border-slate-700 transition-all">
+                      <div className="space-y-1">
+                        <h4 
+                          onClick={() => setSelectedDraft(draft)}
+                          className="font-semibold text-slate-800 dark:text-slate-200 hover:text-indigo-500 dark:hover:text-indigo-400 cursor-pointer text-sm"
+                        >
+                          {draft.title}
+                        </h4>
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full font-medium">
+                            {draft.target_keyword}
+                          </span>
+                          <span className="text-slate-400 dark:text-slate-500">• {formatDate(draft.created_at)}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setSelectedDraft(draft)}
+                          className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer text-slate-600 dark:text-slate-400"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          Preview
+                        </button>
+                        {draft.status === 'draft' ? (
+                          <button
+                            onClick={() => handlePublish(draft.id)}
+                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors cursor-pointer"
+                          >
+                            Publish
+                          </button>
+                        ) : (
+                          <span className="px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 text-xs font-semibold">
+                            Published ✓
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
-            <div className="markdown-preview" style={{ color: '#d1d5db', fontSize: '18px', lineHeight: '1.75' }}>
-              <ReactMarkdown>{matchedArticle.markdown_body}</ReactMarkdown>
-            </div>
-          </article>
-        ) : (
-          <div style={{ textAlign: 'center', padding: '80px 20px' }}>
-            <h1 style={{ fontSize: '32px', marginBottom: '16px' }}>🔍 Content Not Found</h1>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '30px' }}>This article is either not published yet, or doesn't exist.</p>
           </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="dashboard-container">
-      {/* Header */}
-      <header className="dashboard-header">
-        <div className="header-title">
-          <h1>SEO Agent Studio</h1>
-          <p>Scrape context, blueprint outlines, and write search-optimized technical drafts automatically.</p>
-        </div>
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          <div className="status-badge" style={{ background: 'rgba(139, 92, 246, 0.15)', borderColor: 'rgba(139, 92, 246, 0.4)', color: '#c084fc' }}>
-            ⚡ Credits Remaining: {credits}
-          </div>
-          <div className="status-badge">
-            <span className="status-dot"></span>
-            Simulation Sandbox
-          </div>
-        </div>
-      </header>
-
-      {error && (
-        <div style={{
-          background: 'rgba(239, 68, 68, 0.1)',
-          border: '1px solid rgba(239, 68, 68, 0.3)',
-          borderRadius: '12px',
-          padding: '16px 20px',
-          marginBottom: '30px',
-          color: '#f87171',
-          fontSize: '15px'
-        }}>
-          ⚠️ {error}
         </div>
       )}
 
-      {/* Grid Dashboard */}
-      <div className="dashboard-grid">
-        {/* Left Column: Input Control Panel */}
-        <section className="panel-card">
-          <h2>
-            <span style={{ fontSize: '24px' }}>⚡</span>
-            Agent Configuration
-          </h2>
-          <form onSubmit={handleRunAgent}>
-            <div className="form-group">
-              <label htmlFor="keyword-input">Target SEO Keyword</label>
-              <div className="input-wrapper">
-                <input
-                  id="keyword-input"
-                  type="text"
-                  className="text-input"
-                  placeholder="Enter target keyword (e.g., React Native optimization)..."
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
+      {/* AI Chat Tab */}
+      {activeTab === 'AI Chat' && (
+        <div className="max-w-4xl mx-auto h-[calc(100vh-12rem)] flex flex-col bg-lightPanel dark:bg-darkPanel border border-slate-200 dark:border-slate-800/80 rounded-2xl shadow-sm overflow-hidden">
+          {/* Header */}
+          <div className="p-4 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-indigo-500" />
+                AI Consultant Chat
+              </h3>
+              <p className="text-[11px] text-slate-400">Contextual multi-turn advice grounded in current technical audit and performance data.</p>
             </div>
-            
-            {!loading && (
-              <button 
-                type="submit" 
-                className="btn-primary" 
-                disabled={!keyword.trim()}
-              >
-                <span>🚀</span> Run SEO Agent
-              </button>
-            )}
-          </form>
-
-          {/* Dynamic Progress Indicator */}
-          {loading && (
-            <div className="progress-container" style={{ marginTop: '0' }}>
-              <div className="progress-header" style={{ marginBottom: '16px' }}>
-                <span className="spinner"></span>
-                <span className="progress-title" style={{ color: 'var(--input-focus)' }}>Agent Running...</span>
-              </div>
-              <div style={{ color: '#d1d5db', fontSize: '14px', fontStyle: 'italic', marginBottom: '14px' }}>
-                "{statusText}"
-              </div>
-              <div className="progress-steps">
-                <div className={`progress-step ${stepIndex >= 0 ? (stepIndex > 0 ? 'completed' : 'active') : ''}`}>
-                  <span className="step-icon">{stepIndex > 0 ? '✓' : '1'}</span>
-                  <span>SERP scraping</span>
-                </div>
-                <div className={`progress-step ${stepIndex >= 1 ? (stepIndex > 1 ? 'completed' : 'active') : ''}`}>
-                  <span className="step-icon">{stepIndex > 1 ? '✓' : '2'}</span>
-                  <span>Outline blueprint mapping</span>
-                </div>
-                <div className={`progress-step ${stepIndex >= 2 ? (stepIndex > 2 ? 'completed' : 'active') : ''}`}>
-                  <span className="step-icon">{stepIndex > 2 ? '✓' : '3'}</span>
-                  <span>Iterative markdown section composing</span>
-                </div>
-                <div className={`progress-step ${stepIndex >= 4 ? 'completed' : 'active'}`}>
-                  <span className="step-icon">{stepIndex >= 4 ? '✓' : '4'}</span>
-                  <span>Database indexing</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* Right Column: Review Staging Board */}
-        <section className="panel-card">
-          <h2>
-            <span style={{ fontSize: '24px' }}>📁</span>
-            Staging Board (Drafts)
-          </h2>
-          
-          <div className="drafts-list">
-            {drafts.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-icon">📭</div>
-                <p>No content in queue. Enter a keyword on the left to generate drafts.</p>
-              </div>
-            ) : (
-              drafts.map((draft) => (
-                <div key={draft.id} className="draft-item">
-                  <div className="draft-meta">
-                    <h3 
-                      onClick={() => setSelectedDraft(draft)} 
-                      style={{ cursor: 'pointer', hover: { textDecoration: 'underline' } }}
-                    >
-                      {draft.title}
-                    </h3>
-                    <div className="draft-meta-details">
-                      <span className="draft-keyword">{draft.target_keyword}</span>
-                      <span className="draft-date">{formatDate(draft.created_at)}</span>
-                    </div>
-                  </div>
-                  
-                  <div className="draft-actions">
-                    <button 
-                      className="btn-secondary" 
-                      onClick={() => setSelectedDraft(draft)}
-                    >
-                      Preview
-                    </button>
-                    {draft.status === 'draft' ? (
-                      <button 
-                        className="btn-success"
-                        onClick={() => handlePublish(draft.id)}
-                      >
-                        Publish Live
-                      </button>
-                    ) : (
-                      <button 
-                        className="btn-secondary" 
-                        disabled 
-                        style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', color: '#34d399', cursor: 'default', opacity: '1' }}
-                      >
-                        Published ✓
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))
+            {chatSessionId && (
+              <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded-md font-mono">
+                Session: {chatSessionId}
+              </span>
             )}
           </div>
-        </section>
-      </div>
+
+          {/* Conversations body */}
+          <div className="flex-1 p-6 overflow-y-auto space-y-4 bg-slate-50/20 dark:bg-slate-900/5">
+            {chatHistory.map((chat, idx) => (
+              <div 
+                key={idx} 
+                className={`flex gap-3 max-w-[85%] ${chat.role === 'user' ? 'ml-auto flex-row-reverse' : ''}`}
+              >
+                {/* avatar */}
+                <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-xs ${
+                  chat.role === 'user' 
+                    ? 'bg-indigo-600 text-white' 
+                    : 'bg-gradient-to-tr from-purple-500 to-indigo-500 text-white'
+                }`}>
+                  {chat.role === 'user' ? 'ME' : 'AI'}
+                </div>
+                {/* message box */}
+                <div className={`p-4 rounded-2xl text-sm leading-relaxed ${
+                  chat.role === 'user'
+                    ? 'bg-indigo-600 text-white rounded-tr-none'
+                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-tl-none'
+                }`}>
+                  <p>{chat.content}</p>
+                </div>
+              </div>
+            ))}
+            {loadingStates.chat && (
+              <div className="flex gap-3 max-w-[85%]">
+                <div className="w-8 h-8 rounded-full flex-shrink-0 bg-indigo-500 flex items-center justify-center text-white font-bold text-xs">
+                  AI
+                </div>
+                <div className="p-4 rounded-2xl text-sm bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-800 rounded-tl-none flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+                  <span>Claude is analyzing site data...</span>
+                </div>
+              </div>
+            )}
+            <div ref={chatBottomRef} />
+          </div>
+
+          {/* Input Footer */}
+          <form onSubmit={handleChatSend} className="p-4 border-t border-slate-200 dark:border-slate-800 flex gap-2">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              disabled={loadingStates.chat}
+              placeholder="Ask for recommendations on optimizing underperforming pages..."
+              className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={!chatInput.trim() || loadingStates.chat}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white p-2.5 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* Placeholder Tabs */}
+      {['Keyword Engine', 'Site Audits', 'Link Building', 'GSC Analytics'].includes(activeTab) && (
+        <div className="max-w-4xl mx-auto text-center py-20 bg-lightPanel dark:bg-darkPanel border border-slate-200 dark:border-slate-800 rounded-2xl p-8 shadow-sm space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-600 mx-auto">
+            <FileText className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-800 dark:text-white">{activeTab} Panel</h2>
+          <p className="text-sm text-slate-500 max-w-md mx-auto">
+            The {activeTab} engine is running automated recurring background cron jobs. Click on "Overview" to see recent activity logs.
+          </p>
+        </div>
+      )}
 
       {/* Rendered Preview Overlay Modal */}
       {selectedDraft && (
-        <div className="modal-overlay" onClick={() => setSelectedDraft(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{selectedDraft.title}</h2>
-              <button className="btn-close" onClick={() => setSelectedDraft(null)}>&times;</button>
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs" onClick={() => setSelectedDraft(null)}>
+          <div className="bg-lightPanel dark:bg-darkPanel border border-slate-200 dark:border-slate-800/80 rounded-2xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800 dark:text-white leading-tight">{selectedDraft.title}</h2>
+              <button 
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl font-bold p-1"
+                onClick={() => setSelectedDraft(null)}
+              >
+                &times;
+              </button>
             </div>
             
-            <div className="modal-body">
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.03)',
-                padding: '12px 18px',
-                borderRadius: '8px',
-                marginBottom: '20px',
-                fontSize: '14px',
-                border: '1px solid rgba(255, 255, 255, 0.05)'
-              }}>
-                <strong>Original Keyword:</strong> <span style={{ color: '#c084fc' }}>{selectedDraft.target_keyword}</span>
-                <br />
-                <strong>URL Slug:</strong> <span style={{ color: '#a78bfa' }}>/blog/{selectedDraft.slug}</span>
-                <br />
-                <strong>Status:</strong> <span style={{ color: selectedDraft.status === 'published' ? '#34d399' : '#f59e0b' }}>
-                  {selectedDraft.status === 'published' ? 'Published Live' : 'Draft Staged'}
-                </span>
+            {/* Modal Body */}
+            <div className="flex-1 p-6 overflow-y-auto space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-150 dark:border-slate-800/60 p-4 rounded-xl text-xs text-slate-600 dark:text-slate-400">
+                <div>
+                  <strong>Original Keyword:</strong> <span className="text-indigo-500 font-semibold">{selectedDraft.target_keyword}</span>
+                </div>
+                <div>
+                  <strong>URL Slug:</strong> <span className="text-purple-500">/blog/{selectedDraft.slug}</span>
+                </div>
+                <div>
+                  <strong>Status:</strong> <span className={`font-semibold ${selectedDraft.status === 'published' ? 'text-emerald-500' : 'text-amber-500'}`}>
+                    {selectedDraft.status === 'published' ? 'Published Live' : 'Draft Staged'}
+                  </span>
+                </div>
                 {selectedDraft.status === 'published' && (
-                  <>
-                    <br />
-                    <strong>Public URL:</strong> <a href={`#/blog/${selectedDraft.slug}`} target="_blank" rel="noopener noreferrer" style={{ color: '#8b5cf6', textDecoration: 'underline' }}>
-                      {window.location.origin}/#/blog/{selectedDraft.slug}
+                  <div>
+                    <strong>Public URL:</strong> <a href={`#/blog/${selectedDraft.slug}`} target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline">
+                      /blog/{selectedDraft.slug}
                     </a>
-                  </>
+                  </div>
                 )}
               </div>
               
-              <div className="markdown-preview">
+              <div className="markdown-preview prose prose-slate dark:prose-invert max-w-none text-slate-700 dark:text-slate-350 leading-relaxed text-sm">
                 <ReactMarkdown>{selectedDraft.markdown_body}</ReactMarkdown>
               </div>
             </div>
             
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setSelectedDraft(null)}>Close</button>
-              {selectedDraft.status === 'draft' ? (
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2 bg-slate-50/50 dark:bg-slate-900/10">
+              <button 
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs font-semibold cursor-pointer"
+                onClick={() => setSelectedDraft(null)}
+              >
+                Close
+              </button>
+              {selectedDraft.status === 'draft' && (
                 <button 
-                  className="btn-success" 
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer" 
                   onClick={() => handlePublish(selectedDraft.id)}
                 >
                   Publish Live
                 </button>
-              ) : (
-                <a 
-                  href={`#/blog/${selectedDraft.slug}`} 
-                  onClick={() => setSelectedDraft(null)}
-                  className="btn-primary" 
-                  style={{ textDecoration: 'none', display: 'inline-flex', padding: '10px 18px', fontSize: '13px' }}
-                >
-                  View Live Article
-                </a>
               )}
             </div>
           </div>
         </div>
       )}
-    </div>
+    </DashboardLayout>
   );
 }
 
