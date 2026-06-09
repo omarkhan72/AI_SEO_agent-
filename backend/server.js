@@ -6,6 +6,7 @@ import OpenAI from 'openai';
 import serviceAccount from './serviceAccountKey.json' with { type: 'json' };
 import { generateArticleSections } from './services/writerService.js';
 import { fetchLiveSearchContext } from './services/searchService.js';
+import { getSiteProfile, logAgentAction } from './services/memoryService.js';
 
 dotenv.config();
 
@@ -35,6 +36,19 @@ app.post('/api/plan-content', async (req, res) => {
   }
 
   try {
+    // Fetch Global Site Profile memory
+    let siteProfile;
+    try {
+      siteProfile = await getSiteProfile("admin");
+    } catch (profileError) {
+      console.error("❌ Firestore Profile Read Error, using fallback:", profileError);
+      siteProfile = {
+        brand_voice: "Professional and technical",
+        target_audience: "Software Engineers",
+        negative_keywords: ["cheap", "free"]
+      };
+    }
+
     // Step 1: Fetch live search data using our Brave tool
     const liveData = await fetchLiveSearchContext(keyword);
     const searchContextString = JSON.stringify(liveData);
@@ -52,7 +66,12 @@ app.post('/api/plan-content', async (req, res) => {
             "title": "A highly optimized, catchy SEO title string",
             "slug": "url-safe-slug-version-of-title",
             "headings": ["H2 Heading 1", "H2 Heading 2", "H2 Heading 3"]
-          }`
+          }
+
+          Adhere strictly to the following site profile and brand rules:
+          - Brand Voice: ${siteProfile.brand_voice}
+          - Target Audience: ${siteProfile.target_audience}
+          - Negative Keywords (DO NOT use any of these in title, slug, or headings): ${siteProfile.negative_keywords.join(', ')}`
         },
         {
           role: 'user',
@@ -79,6 +98,13 @@ app.post('/api/plan-content', async (req, res) => {
         created_at: admin.firestore.FieldValue.serverTimestamp()
       });
       console.log(`[Firestore] Outline draft saved with ID: ${docRef.id}`);
+
+      // Log successful generation action to Firestore
+      try {
+        await logAgentAction(keyword, true, { type: "outline_planned" });
+      } catch (logError) {
+        console.error("❌ Firestore Log Action Error:", logError);
+      }
     } catch (dbError) {
       console.error("❌ Firestore Write Error during content planning:", dbError);
     }
