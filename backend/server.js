@@ -10,6 +10,7 @@ import { getSiteProfile, logAgentAction } from './services/memoryService.js';
 import { generateStructuredJSON } from './services/aiBrainService.js';
 import cron from 'node-cron';
 import { scanForSEOUpdates } from './services/autoUpdaterService.js';
+import { discoverKeywords } from './services/keywordResearchService.js';
 
 dotenv.config();
 
@@ -102,6 +103,37 @@ app.post('/api/plan-content', async (req, res) => {
   } catch (error) {
     console.error("❌ Content Planner Error:", error);
     res.status(500).json({ error: "Internal Server Error during content planning", details: error.message });
+  }
+});
+
+// Endpoint to discover competitive keywords grouped in semantic clusters
+app.post('/api/research-keywords', async (req, res) => {
+  const { seedTopic, siteDA, intent } = req.body;
+
+  if (!seedTopic) {
+    return res.status(400).json({ error: "Please provide a seedTopic in the request body." });
+  }
+
+  const daValue = siteDA !== undefined ? siteDA : 30; // Fallback default DA
+  const intentValue = intent || "all";
+
+  try {
+    console.log(`[HTTP Route] Triggering keyword discovery for topic: "${seedTopic}" (DA: ${daValue}, Intent: ${intentValue})`);
+    const clusters = await discoverKeywords(seedTopic, daValue, intentValue);
+
+    return res.status(200).json({
+      success: true,
+      seedTopic,
+      siteDA: daValue,
+      intent: intentValue,
+      data: clusters
+    });
+  } catch (error) {
+    console.error("❌ Keyword Research Route Error:", error);
+    return res.status(500).json({
+      error: "Internal Server Error during keyword research",
+      details: error.message
+    });
   }
 });
 

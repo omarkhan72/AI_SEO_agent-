@@ -22,6 +22,27 @@ Keep the tone natural, authoritative, and helpful. Avoid robotic transitions or 
   "summary": "Overall summary of findings",
   "key_takeaways": ["Takeaway 1", "Takeaway 2", "Takeaway 3"],
   "action_items": ["Action item 1", "Action item 2"]
+}`,
+
+  KEYWORD_RESEARCHER: `You are an expert SEO Keyword Research engine. Generate a list of 15-20 highly relevant, high-traffic long-tail keyword ideas based on the provided seed topic.
+For each generated keyword idea, assign:
+- keyword: The long-tail keyword phrase.
+- search_volume: Simulated monthly search volume (integer between 100 and 50000).
+- difficulty: Keyword Difficulty (KD) percentage (integer between 0 and 100).
+- intent: Search intent ("informational", "transactional", "commercial", or "navigational").
+- cluster: A thematic category/cluster grouping name for semantic clustering.
+
+Output a valid JSON object matching this exact schema:
+{
+  "keywords": [
+    {
+      "keyword": "...",
+      "search_volume": 1500,
+      "difficulty": 35,
+      "intent": "informational",
+      "cluster": "..."
+    }
+  ]
 }`
 };
 
