@@ -8,6 +8,8 @@ import { generateArticleSections } from './services/writerService.js';
 import { fetchLiveSearchContext } from './services/searchService.js';
 import { getSiteProfile, logAgentAction } from './services/memoryService.js';
 import { generateStructuredJSON } from './services/aiBrainService.js';
+import cron from 'node-cron';
+import { scanForSEOUpdates } from './services/autoUpdaterService.js';
 
 dotenv.config();
 
@@ -256,6 +258,17 @@ app.get('/api/posts/:slug', async (req, res) => {
   } catch (error) {
     console.error("Error fetching article by slug:", error);
     return res.status(500).json({ error: "Failed to fetch article" });
+  }
+});
+
+// 3. Initialize background scheduling for weekly scan
+cron.schedule('0 0 * * 1', async () => {
+  try {
+    console.log("[Auto-Updater] Executing weekly SEO updates scan...");
+    await scanForSEOUpdates();
+    console.log("[Auto-Updater] Weekly SEO knowledge base refreshed");
+  } catch (error) {
+    console.error("❌ [Auto-Updater] Failed weekly SEO update scan:", error);
   }
 });
 
