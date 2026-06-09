@@ -7,6 +7,7 @@ import serviceAccount from './serviceAccountKey.json' with { type: 'json' };
 import { generateArticleSections } from './services/writerService.js';
 import { fetchLiveSearchContext } from './services/searchService.js';
 import { getSiteProfile, logAgentAction } from './services/memoryService.js';
+import { generateStructuredJSON } from './services/aiBrainService.js';
 
 dotenv.config();
 
@@ -17,7 +18,8 @@ admin.initializeApp({
 const db = admin.firestore();
 
 // 2. Initialize OpenAI Engine Connection
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openaiApiKey = process.env.OPENAI_API_KEY;
+const openai = openaiApiKey && openaiApiKey !== 'your_openai_api_key_here' ? new OpenAI({ apiKey: openaiApiKey }) : null;
 
 const app = express();
 app.use(cors());
@@ -53,35 +55,15 @@ app.post('/api/plan-content', async (req, res) => {
     const liveData = await fetchLiveSearchContext(keyword);
     const searchContextString = JSON.stringify(liveData);
 
-    // Step 2: Request structured JSON output from OpenAI
+    // Step 2 & 3: Request and parse structured JSON outline from Claude
     console.log(`[AI Brain] Planning outline for: "${keyword}" using live context...`);
-    const outlineResponse = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: 'system',
-          content: `You are an expert SEO Strategist. Analyze the provided live web search context and return a valid JSON object matching this exact schema:
-          {
-            "title": "A highly optimized, catchy SEO title string",
-            "slug": "url-safe-slug-version-of-title",
-            "headings": ["H2 Heading 1", "H2 Heading 2", "H2 Heading 3"]
-          }
-
-          Adhere strictly to the following site profile and brand rules:
-          - Brand Voice: ${siteProfile.brand_voice}
-          - Target Audience: ${siteProfile.target_audience}
-          - Negative Keywords (DO NOT use any of these in title, slug, or headings): ${siteProfile.negative_keywords.join(', ')}`
-        },
-        {
-          role: 'user',
-          content: `Target Keyword: ${keyword}. Live Web Context: ${searchContextString}`
-        }
-      ]
-    });
-
-    // Step 3: Parse the JSON outline
-    const outline = JSON.parse(outlineResponse.choices[0].message.content);
+    const userContent = `Target Keyword: ${keyword}. Live Web Context: ${searchContextString}`;
+    const variables = {
+      brand_voice: siteProfile.brand_voice,
+      target_audience: siteProfile.target_audience,
+      negative_keywords: siteProfile.negative_keywords.join(', ')
+    };
+    const outline = await generateStructuredJSON('SEO_OUTLINE_PLANNER', userContent, variables);
     console.log(`[AI Brain] Outline planned successfully: ${outline.title}`);
 
     // Step 4: Write outline draft to Firestore content_pipeline collection
@@ -124,6 +106,10 @@ app.post('/api/plan-content', async (req, res) => {
 // Unified endpoint to compose an article from scratch using Search -> Plan -> Write
 app.post('/api/agent/compose', async (req, res) => {
   try {
+    if (!openai) {
+      return res.status(500).json({ error: "OpenAI client is not initialized. Please configure OPENAI_API_KEY in your env file." });
+    }
+
     const { keyword } = req.body;
     if (!keyword) {
       return res.status(400).json({ error: "Keyword is required in request body" });
