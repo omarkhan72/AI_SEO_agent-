@@ -11,6 +11,7 @@ import { generateStructuredJSON } from './services/aiBrainService.js';
 import cron from 'node-cron';
 import { scanForSEOUpdates } from './services/autoUpdaterService.js';
 import { discoverKeywords } from './services/keywordResearchService.js';
+import { analyzeCompetitorGaps } from './services/competitorService.js';
 
 dotenv.config();
 
@@ -132,6 +133,49 @@ app.post('/api/research-keywords', async (req, res) => {
     console.error("❌ Keyword Research Route Error:", error);
     return res.status(500).json({
       error: "Internal Server Error during keyword research",
+      details: error.message
+    });
+  }
+});
+
+// Endpoint to execute a deep competitor outline extraction and content gap analysis
+app.post('/api/competitor-intelligence', async (req, res) => {
+  const { keyword, targetDomain } = req.body;
+
+  if (!keyword || !targetDomain) {
+    return res.status(400).json({ error: "Please provide both keyword and targetDomain in the request body." });
+  }
+
+  try {
+    console.log(`[HTTP Route] Triggering competitor gap analysis for: "${keyword}" (Domain: "${targetDomain}")`);
+    const gapAnalysis = await analyzeCompetitorGaps(keyword, targetDomain);
+
+    // Save a running log of this gap audit to Firestore collection 'competitor_audits'
+    let auditDocId = null;
+    try {
+      console.log("[Firestore] Logging competitor gap audit...");
+      const docRef = await db.collection('competitor_audits').add({
+        keyword,
+        target_domain: targetDomain,
+        audit_data: gapAnalysis,
+        created_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+      auditDocId = docRef.id;
+      console.log(`[Firestore] Competitor audit saved with ID: ${auditDocId}`);
+    } catch (dbError) {
+      console.error("❌ Firestore Write Error during competitor audit logging:", dbError);
+    }
+
+    return res.status(200).json({
+      success: true,
+      auditDocumentId: auditDocId,
+      data: gapAnalysis
+    });
+
+  } catch (error) {
+    console.error("❌ Competitor Intelligence Route Error:", error);
+    return res.status(500).json({
+      error: "Internal Server Error during competitor gap analysis",
       details: error.message
     });
   }

@@ -43,6 +43,30 @@ Output a valid JSON object matching this exact schema:
       "cluster": "..."
     }
   ]
+}`,
+
+  COMPETITOR_GAP_ANALYZER: `You are an expert SEO Competitor Intelligence engine. 
+Analyze the provided SERP competitors and the user's existing articles.
+First, reconstruct the likely content structures (main H2/H3 headings, word count estimation) for the top competitor pages.
+Second, run a comparison matrix between competitor content structures and the user's existing articles to identify thematic subtopics, technical concepts, or keyword questions the competitors rank for that the user's domain completely lacks.
+
+Output a valid JSON object matching this exact schema:
+{
+  "competitor_profiles": [
+    {
+      "url": "competitor page URL",
+      "title": "competitor page title",
+      "estimated_word_count": 1800,
+      "reconstructed_headings": ["H2 Heading 1", "H2 Heading 2"]
+    }
+  ],
+  "content_gaps": [
+    {
+      "topic": "Thematic gap topic or concept",
+      "description": "Why this topic is needed and what competitors cover.",
+      "gap_criticality_score": 85
+    }
+  ]
 }`
 };
 
