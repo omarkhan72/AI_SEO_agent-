@@ -10,7 +10,11 @@ export function useAgentAPI() {
     siteAudit: false,
     trackPerformance: false,
     suggestions: false,
-    chat: false
+    chat: false,
+    gscAudit: false,
+    keywordResearch: false,
+    linkDiscovery: false,
+    outreachGeneration: false
   });
 
   const setSingleLoading = (key, value) => {
@@ -139,12 +143,104 @@ export function useAgentAPI() {
     }
   };
 
+  /**
+   * Triggers GSC performance audit for site.
+   */
+  const runGscAudit = async (siteUrl) => {
+    setSingleLoading('gscAudit', true);
+    const toastId = toast.loading(`Initiating GSC performance audit for "${siteUrl}"...`);
+    try {
+      const response = await axios.post(`${API_BASE}/gsc-audit`, { siteUrl });
+      if (response.data && response.data.success) {
+        toast.success(`Success! GSC audit finalized for "${siteUrl}".`, { id: toastId });
+        return response.data;
+      }
+      throw new Error(response.data?.error || "Invalid response format");
+    } catch (err) {
+      const errMsg = err.response?.data?.error || err.message;
+      toast.error(`Error running GSC audit: ${errMsg}`, { id: toastId });
+      throw err;
+    } finally {
+      setSingleLoading('gscAudit', false);
+    }
+  };
+
+  /**
+   * Discovers and clusters keywords based on seed phrase.
+   */
+  const researchKeywords = async (seedTopic, siteDA = 30, intent = 'all') => {
+    setSingleLoading('keywordResearch', true);
+    const toastId = toast.loading(`Searching semantic clusters for "${seedTopic}"...`);
+    try {
+      const response = await axios.post(`${API_BASE}/research-keywords`, { seedTopic, siteDA, intent });
+      if (response.data && response.data.success) {
+        toast.success(`Success! Keyword clusters discovered for "${seedTopic}".`, { id: toastId });
+        return response.data;
+      }
+      throw new Error(response.data?.error || "Invalid response format");
+    } catch (err) {
+      const errMsg = err.response?.data?.error || err.message;
+      toast.error(`Error researching keywords: ${errMsg}`, { id: toastId });
+      throw err;
+    } finally {
+      setSingleLoading('keywordResearch', false);
+    }
+  };
+
+  /**
+   * Discovers Guest Post targets and Unlinked Mentions.
+   */
+  const discoverLinks = async (keyword, brandName, targetDomain) => {
+    setSingleLoading('linkDiscovery', true);
+    const toastId = toast.loading('Searching guest post directories and unlinked brand mentions...');
+    try {
+      const response = await axios.post(`${API_BASE}/backlinks/discover`, { keyword, brandName, targetDomain });
+      if (response.data && response.data.success) {
+        toast.success('Success! Outreach prospects discovered.', { id: toastId });
+        return response.data;
+      }
+      throw new Error(response.data?.error || "Invalid response format");
+    } catch (err) {
+      const errMsg = err.response?.data?.error || err.message;
+      toast.error(`Error discovering backlink targets: ${errMsg}`, { id: toastId });
+      throw err;
+    } finally {
+      setSingleLoading('linkDiscovery', false);
+    }
+  };
+
+  /**
+   * Generates a digital PR outreach template.
+   */
+  const generateOutreach = async (targetUrl, opportunityType, brandName) => {
+    setSingleLoading('outreachGeneration', true);
+    const toastId = toast.loading(`Drafting AI outreach pitch for "${targetUrl}"...`);
+    try {
+      const response = await axios.post(`${API_BASE}/backlinks/outreach`, { targetUrl, opportunityType, brandName });
+      if (response.data && response.data.success) {
+        toast.success('Success! AI outreach pitch drafted.', { id: toastId });
+        return response.data;
+      }
+      throw new Error(response.data?.error || "Invalid response format");
+    } catch (err) {
+      const errMsg = err.response?.data?.error || err.message;
+      toast.error(`Error generating outreach pitch: ${errMsg}`, { id: toastId });
+      throw err;
+    } finally {
+      setSingleLoading('outreachGeneration', false);
+    }
+  };
+
   return {
     loadingStates,
     planContent,
     runSiteAudit,
     trackPerformance,
     getSuggestions,
-    sendChatMessage
+    sendChatMessage,
+    runGscAudit,
+    researchKeywords,
+    discoverLinks,
+    generateOutreach
   };
 }
