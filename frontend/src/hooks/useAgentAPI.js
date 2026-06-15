@@ -14,7 +14,9 @@ export function useAgentAPI() {
     gscAudit: false,
     keywordResearch: false,
     linkDiscovery: false,
-    outreachGeneration: false
+    outreachGeneration: false,
+    fetchProperties: false,
+    addProperty: false
   });
 
   const setSingleLoading = (key, value) => {
@@ -231,6 +233,48 @@ export function useAgentAPI() {
     }
   };
 
+  /**
+   * Fetches all registered web properties for the user.
+   */
+  const fetchProperties = async () => {
+    setSingleLoading('fetchProperties', true);
+    try {
+      const response = await axios.get(`${API_BASE}/properties`);
+      if (response.data && response.data.success) {
+        return response.data;
+      }
+      throw new Error(response.data?.error || "Invalid response format");
+    } catch (err) {
+      const errMsg = err.response?.data?.error || err.message;
+      toast.error(`Error loading websites: ${errMsg}`);
+      throw err;
+    } finally {
+      setSingleLoading('fetchProperties', false);
+    }
+  };
+
+  /**
+   * Links a new website property to SEO Studio.
+   */
+  const addProperty = async (domainUrl, cmsPlatform, connectGsc = false) => {
+    setSingleLoading('addProperty', true);
+    const toastId = toast.loading(`Linking website "${domainUrl}"...`);
+    try {
+      const response = await axios.post(`${API_BASE}/properties/add`, { domainUrl, cmsPlatform, connectGsc });
+      if (response.data && response.data.success) {
+        toast.success(`Success! Website linked to your dashboard.`, { id: toastId });
+        return response.data;
+      }
+      throw new Error(response.data?.error || "Invalid response format");
+    } catch (err) {
+      const errMsg = err.response?.data?.error || err.message;
+      toast.error(`Error linking website: ${errMsg}`, { id: toastId });
+      throw err;
+    } finally {
+      setSingleLoading('addProperty', false);
+    }
+  };
+
   return {
     loadingStates,
     planContent,
@@ -241,6 +285,8 @@ export function useAgentAPI() {
     runGscAudit,
     researchKeywords,
     discoverLinks,
-    generateOutreach
+    generateOutreach,
+    fetchProperties,
+    addProperty
   };
 }

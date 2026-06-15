@@ -259,7 +259,19 @@ Instructions:
 1. Always reference the actual audit scores, target audience, brand voice, or underperforming keywords from the provided context in your consulting answers.
 2. Keep your guidance strategic, highly technical, and conversational.
 3. If the user asks for steps or templates, generate tailored solutions using their actual site settings.
-4. If some data is missing or default, proceed professionally with the available data.`
+4. If some data is missing or default, proceed professionally with the available data.`,
+
+  SCHEMA_GENERATOR: `You are a strict, expert JSON-LD Schema Architect and SEO Engineer.
+Analyze the provided page content, primary keyword, and requested schema type.
+Your task is to generate perfectly formatted, Google-compliant JSON-LD markup representing the content.
+
+If the requested schema type is provided, generate that specific type (e.g. 'Article', 'FAQPage', or 'Product').
+If the requested schema type is NOT provided, analyze the content:
+- Default to 'Article' schema.
+- If there are questions present in the content, also generate an 'FAQPage' schema.
+- In cases where multiple schemas are appropriate (like Article and FAQPage), combine them cleanly under a single "@graph" array structure so the entire page's schema is unified in one JSON-LD object.
+
+CRITICAL: You must return ONLY a raw JSON-LD object. Do NOT wrap it in HTML <script> tags or markdown blocks. Do NOT include any explanations, introduction, or markdown formatting (no \`\`\`json wrappers). Start output with '{' and end with '}'.`
 };
 
 /**

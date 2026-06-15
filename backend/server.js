@@ -24,6 +24,7 @@ import { generate30DayCalendar } from './services/contentCalendarService.js';
 import { initializeScheduler } from './services/schedulerService.js';
 import { trackAndLogPerformance, generateImprovementSuggestions } from './services/performanceTrackerService.js';
 import { handleConsultantChat } from './services/chatConsultantService.js';
+import { generatePageSchema } from './services/schemaGeneratorService.js';
 
 dotenv.config();
 
@@ -268,12 +269,13 @@ app.post('/api/write-article', async (req, res) => {
     const articlePayload = await writeFullArticle(documentId);
 
     // Update the existing document in Firestore content_pipeline collection
-    console.log("[Firestore] Saving completed article body and metadata...");
+    console.log("[Firestore] Saving completed article body, metadata and schema...");
     await db.collection('content_pipeline').doc(documentId).update({
       full_content_html: articlePayload.full_content_html,
       meta_title: articlePayload.meta_title,
       meta_description: articlePayload.meta_description,
       reading_time: articlePayload.reading_time,
+      schema_markup: articlePayload.schema_markup || null,
       status: "completed",
       updated_at: admin.firestore.FieldValue.serverTimestamp()
     });
@@ -289,6 +291,63 @@ app.post('/api/write-article', async (req, res) => {
     console.error("❌ Article Writer Route Error:", error);
     return res.status(500).json({
       error: "Internal Server Error during article writing",
+      details: error.message
+    });
+  }
+});
+
+// Endpoint to automatically generate JSON-LD schema markup for a document
+app.post('/api/schema/generate', async (req, res) => {
+  const { documentId, content, type } = req.body;
+
+  if (!documentId) {
+    return res.status(400).json({ error: "Please provide documentId in the request body." });
+  }
+
+  try {
+    let pageContent = content;
+    let primaryKeyword = '';
+    const docRef = db.collection('content_pipeline').doc(documentId);
+    
+    try {
+      const docSnapshot = await docRef.get();
+      if (docSnapshot.exists) {
+        const data = docSnapshot.data();
+        primaryKeyword = data.target_keyword || '';
+        if (!pageContent) {
+          pageContent = data.full_content_html || data.markdown_body || '';
+        }
+      }
+    } catch (dbReadError) {
+      console.warn(`⚠️ [Firestore] Database read failed for document ${documentId}:`, dbReadError.message);
+    }
+
+    if (!pageContent) {
+      return res.status(400).json({ error: "No content available to generate schema. Please provide 'content' in the request body or ensure the document has content." });
+    }
+
+    const schemaString = await generatePageSchema(pageContent, primaryKeyword, type);
+
+    // Save to the database within that specific document's profile under a new schema_markup field.
+    try {
+      await docRef.update({
+        schema_markup: schemaString,
+        updated_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log(`[Firestore] Saved schema_markup to document ${documentId}`);
+    } catch (dbWriteError) {
+      console.warn(`⚠️ [Firestore] Database write failed for document ${documentId} schema_markup:`, dbWriteError.message);
+    }
+
+    return res.status(200).json({
+      success: true,
+      documentId,
+      schema_markup: schemaString
+    });
+  } catch (error) {
+    console.error("❌ Schema Generation Route Error:", error);
+    return res.status(500).json({
+      error: "Internal Server Error during schema generation",
       details: error.message
     });
   }
@@ -504,6 +563,103 @@ app.post('/api/gsc-audit', async (req, res) => {
   }
 });
 
+// Endpoint to fetch user properties from Firestore user_properties collection
+app.get('/api/properties', async (req, res) => {
+  try {
+    const snapshot = await db.collection('user_properties').get();
+    const list = [];
+    snapshot.forEach(doc => {
+      list.push({ id: doc.id, ...doc.data() });
+    });
+    
+    // Auto-seed baseline properties if database is empty so that it works out of the box
+    if (list.length === 0) {
+      console.log("[Property Engine] Seeding default properties into Firestore...");
+      const baseline = ['example.com', 'techventures.io', 'saasgrowth.org'];
+      const batch = db.batch();
+      baseline.forEach(domain => {
+        const docRef = db.collection('user_properties').doc();
+        batch.set(docRef, {
+          userId: 'admin',
+          domainUrl: `https://${domain}`,
+          cmsPlatform: 'nextjs',
+          gsc_connected: true,
+          cms_connected: true,
+          health_score: Math.round(75 + Math.random() * 20),
+          added_at: admin.firestore.FieldValue.serverTimestamp()
+        });
+      });
+      await batch.commit();
+      
+      // Refetch
+      const refetchSnapshot = await db.collection('user_properties').get();
+      refetchSnapshot.forEach(doc => {
+        list.push({ id: doc.id, ...doc.data() });
+      });
+    }
+    
+    return res.status(200).json({ success: true, data: list });
+  } catch (error) {
+    console.error("❌ GET Properties Route Error:", error);
+    return res.status(500).json({
+      error: "Failed to fetch user web properties",
+      details: error.message
+    });
+  }
+});
+
+// Endpoint to add a new web property to the SEO Agent Studio
+app.post('/api/properties/add', async (req, res) => {
+  const { userId, domainUrl, cmsPlatform } = req.body;
+
+  if (!domainUrl) {
+    return res.status(400).json({ error: "Please provide a domainUrl in the request body." });
+  }
+
+  // URL Regex checks for valid domain format
+  const urlRegex = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([\/\w .-]*)*\/?$/i;
+  if (!urlRegex.test(domainUrl)) {
+    return res.status(400).json({ error: "Invalid website URL format. Please enter a valid URL." });
+  }
+
+  // Clean prefix check
+  let cleanUrl = domainUrl.trim();
+  if (!/^https?:\/\//i.test(cleanUrl)) {
+    cleanUrl = `https://${cleanUrl}`;
+  }
+
+  try {
+    const docData = {
+      userId: userId || 'admin',
+      domainUrl: cleanUrl,
+      cmsPlatform: cmsPlatform || 'custom',
+      gsc_connected: req.body.connectGsc || false,
+      cms_connected: true,
+      health_score: null,
+      added_at: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    console.log(`[Property Engine] Creating website property: "${cleanUrl}" for user: "${docData.userId}"`);
+    const docRef = await db.collection('user_properties').add(docData);
+    
+    return res.status(201).json({
+      success: true,
+      id: docRef.id,
+      data: {
+        id: docRef.id,
+        ...docData,
+        added_at: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error("❌ POST Property Add Route Error:", error);
+    return res.status(500).json({
+      error: "Failed to create web property in Firestore database",
+      details: error.message
+    });
+  }
+});
+
 // Endpoint to generate a prioritized, structured 30-day publishing calendar from keyword pools
 app.post('/api/content-calendar/generate', async (req, res) => {
   const { domain, keywordPool } = req.body;
@@ -714,6 +870,15 @@ Your output must be a valid JSON object matching this exact schema:
       console.error("❌ E-E-A-T Generation Error:", eeatError);
     }
 
+    // 3.6. Generate Page Schema
+    let schemaMarkup = null;
+    try {
+      console.log("[Schema Engine] Automatically generating page schema for the composed article...");
+      schemaMarkup = await generatePageSchema(fullMarkdown, keyword || blueprint.title, 'Article');
+    } catch (schemaError) {
+      console.error("❌ Schema Generation Error in compose:", schemaError.message);
+    }
+
     // 4. Save draft to Firestore collection
     console.log("Saving content blueprint and draft to Firestore...");
     const docRef = await db.collection('content_pipeline').add({
@@ -724,6 +889,7 @@ Your output must be a valid JSON object matching this exact schema:
       status: "draft",
       author: "Omar Khan",
       schema_json_ld: trustSignals ? trustSignals.schema_json_ld : null,
+      schema_markup: schemaMarkup,
       author_bio_html: trustSignals ? trustSignals.author_bio_html : null,
       eeat_trust_score: trustSignals ? trustSignals.eeat_trust_score : null,
       about_page_tips: trustSignals ? trustSignals.about_page_tips : null,
@@ -738,6 +904,7 @@ Your output must be a valid JSON object matching this exact schema:
       headings: blueprint.headings,
       markdown: fullMarkdown,
       schema_json_ld: trustSignals ? trustSignals.schema_json_ld : null,
+      schema_markup: schemaMarkup,
       author_bio_html: trustSignals ? trustSignals.author_bio_html : null,
       eeat_trust_score: trustSignals ? trustSignals.eeat_trust_score : null,
       about_page_tips: trustSignals ? trustSignals.about_page_tips : null

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   FileText, 
@@ -13,8 +13,8 @@ import {
   ChevronRight,
   Globe 
 } from 'lucide-react';
-
-const DOMAINS = ['example.com', 'techventures.io', 'saasgrowth.org'];
+import { useAgentAPI } from '../../hooks/useAgentAPI.js';
+import AddPropertyModal from '../modals/AddPropertyModal.jsx';
 
 export default function DashboardLayout({ 
   children, 
@@ -24,6 +24,46 @@ export default function DashboardLayout({
   setActiveDomain 
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { fetchProperties } = useAgentAPI();
+  const [properties, setProperties] = useState([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const getCleanDomain = (url) => {
+    if (!url) return '';
+    return url.replace(/^(?:https?:\/\/)?(?:www\.)?/i, "").split('/')[0];
+  };
+
+  const loadProperties = async () => {
+    try {
+      const result = await fetchProperties();
+      if (result && result.success && result.data) {
+        setProperties(result.data);
+      }
+    } catch (err) {
+      console.warn("Failed to load properties, using static defaults:", err.message);
+      setProperties(['example.com', 'techventures.io', 'saasgrowth.org']);
+    }
+  };
+
+  useEffect(() => {
+    loadProperties();
+  }, []);
+
+  const handleDropdownChange = (e) => {
+    const value = e.target.value;
+    if (value === 'ADD_NEW_PROPERTY') {
+      setIsModalOpen(true);
+    } else {
+      setActiveDomain(value);
+    }
+  };
+
+  const handleAddPropertySuccess = (newProperty) => {
+    const cleanDomain = getCleanDomain(newProperty.domainUrl);
+    setProperties(prev => [...prev, newProperty]);
+    setActiveDomain(cleanDomain);
+    setIsModalOpen(false);
+  };
 
   const navItems = [
     { id: 'Overview', label: 'Overview', icon: LayoutDashboard },
@@ -78,14 +118,21 @@ export default function DashboardLayout({
               <Globe className="w-3.5 h-3.5 text-gray-400" />
               <select 
                 value={activeDomain}
-                onChange={(e) => setActiveDomain(e.target.value)}
+                onChange={handleDropdownChange}
                 className="w-full bg-transparent border-none outline-none font-semibold text-gray-700 cursor-pointer focus:ring-0 focus:outline-none"
               >
-                {DOMAINS.map((domain) => (
-                  <option key={domain} value={domain} className="bg-white text-gray-800">
-                    {domain}
-                  </option>
-                ))}
+                {properties.map((prop) => {
+                  const clean = getCleanDomain(prop.domainUrl || prop);
+                  return (
+                    <option key={clean} value={clean} className="bg-white text-gray-800">
+                      {clean}
+                    </option>
+                  );
+                })}
+                <option value="" disabled>──────────</option>
+                <option value="ADD_NEW_PROPERTY" className="text-indigo-600 font-bold bg-white">
+                  + Add New Website
+                </option>
               </select>
             </div>
           </div>
@@ -158,6 +205,15 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
+
+      {/* Modal Add Property Wizard Overlay */}
+      {isModalOpen && (
+        <AddPropertyModal 
+          isOpen={isModalOpen} 
+          onClose={() => setIsModalOpen(false)} 
+          onSuccess={handleAddPropertySuccess} 
+        />
+      )}
     </div>
   );
 }

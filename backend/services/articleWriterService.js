@@ -1,5 +1,6 @@
 import admin from 'firebase-admin';
 import { generateStructuredJSON } from './aiBrainService.js';
+import { generatePageSchema } from './schemaGeneratorService.js';
 
 /**
  * Reads a draft outline blueprint from Firestore, triggers the AI copywriter (Claude) to
@@ -44,10 +45,20 @@ export async function writeFullArticle(documentId) {
     throw new Error("Invalid article output schema returned from Core AI Brain copywriter.");
   }
 
+  // Step 4: Automatically generate page schema markup
+  let schema_markup = null;
+  try {
+    console.log(`[Article Engine] Automatically generating schema for new article: "${title}"`);
+    schema_markup = await generatePageSchema(writingResult.full_content_html, target_keyword || title, 'Article');
+  } catch (schemaError) {
+    console.warn("⚠️ [Article Engine] Failed to automatically generate schema for article:", schemaError.message);
+  }
+
   return {
     full_content_html: writingResult.full_content_html,
     meta_title: writingResult.meta_title,
     meta_description: writingResult.meta_description,
-    reading_time: parseInt(writingResult.reading_time, 10) || 5
+    reading_time: parseInt(writingResult.reading_time, 10) || 5,
+    schema_markup
   };
 }
